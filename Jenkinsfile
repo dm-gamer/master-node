@@ -5,7 +5,7 @@ pipeline {
         IMAGE_NAME      = "sanjay5raj/master-node:latest"
         CONTAINER_NAME  = "my-node-container"
         APP_PORT        = "3000"
-        EC2_HOST        = "ubuntu@<your-ec2-public-ip>"   // ← change this
+        EC2_HOST        = "ubuntu@54.186.157.63"   // ← change this
         DOCKER_CREDS    = "docker-hub-cred"
         EC2_SSH_KEY     = "ec2-ssh-key"
     }
