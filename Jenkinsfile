@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "sanjay5raj/master-node:latest"
-        CONTAINER_NAME = "my-node-container"
-        PORT = "3000"
-
-        // Docker Hub credentials ID from Jenkins
-        DOCKER_CREDENTIALS = "docker-hub-cred"
+        IMAGE_NAME      = "sanjay5raj/master-node:latest"
+        CONTAINER_NAME  = "my-node-container"
+        APP_PORT        = "3000"
+        EC2_HOST        = "ubuntu@<your-ec2-public-ip>"   // ← change this
+        DOCKER_CREDS    = "docker-hub-cred"
+        EC2_SSH_KEY     = "ec2-ssh-key"
     }
 
     stages {
@@ -20,54 +20,51 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                bat "docker build -t $IMAGE_NAME ."
+                sh "docker build -t ${IMAGE_NAME} ."
             }
         }
 
-        stage('Login to Docker Hub') {
+        stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: "$DOCKER_CREDENTIALS",
+                    credentialsId: "${DOCKER_CREDS}",
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    bat """
-                    echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
+                    sh """
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        docker push ${IMAGE_NAME}
                     """
                 }
             }
         }
 
-        stage('Push Image to Docker Hub') {
+        stage('Deploy to EC2') {
             steps {
-                bat "docker push $IMAGE_NAME"
-            }
-        }
-
-        stage('Stop Old Container') {
-            steps {
-                bat """
-                docker stop $CONTAINER_NAME || true
-                docker rm $CONTAINER_NAME || true
-                """
-            }
-        }
-
-        stage('Run Container') {
-            steps {
-                bat """
-                docker run -d -p $PORT:3000 --name $CONTAINER_NAME $IMAGE_NAME
-                """
+                sshagent(credentials: ["${EC2_SSH_KEY}"]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
+                            docker pull ${IMAGE_NAME}
+                            docker stop ${CONTAINER_NAME} || true
+                            docker rm   ${CONTAINER_NAME} || true
+                            docker run -d \
+                                -p ${APP_PORT}:3000 \
+                                --name ${CONTAINER_NAME} \
+                                --restart always \
+                                ${IMAGE_NAME}
+                        '
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo "Build, Push & Deployment successful 🚀"
+            echo "✅ Deployed successfully to EC2!"
         }
         failure {
-            echo "Pipeline failed ❌"
+            echo "❌ Pipeline failed. Check logs."
         }
     }
 }
